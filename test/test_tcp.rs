@@ -516,3 +516,49 @@ fn connection_reset_by_peer() {
     }
 
 }
+
+#[test]
+fn reuse_io() {
+    const N: usize = 16;
+
+    let l = net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+
+    let t = thread::spawn(move || {
+        let mut s = l.accept().unwrap().0;
+        let mut amt = 0;
+        while amt < N {
+            amt += s.write(&[1; 1024]).unwrap();
+        }
+    });
+
+    let f = |s: &mut TcpStream| {
+        let poll = Poll::new().unwrap();
+        let mut events = Events::with_capacity(16);
+        poll.register(s, Token(1), Ready::readable(), PollOpt::level()).unwrap();
+
+        // Wait for our TCP stream to connect
+        'outer: loop {
+            poll.poll(&mut events, None).unwrap();
+            for event in events.iter() {
+                if event.token() == Token(1) && event.kind().is_readable() {
+                    break 'outer
+                }
+            }
+        }
+        poll.deregister(s).unwrap();
+
+        let mut b = [0; 1024];
+        let n = s.read(&mut b).unwrap();
+        for byte in b[..n].iter() {
+            assert_eq!(*byte, 1);
+        }
+    };
+
+    let mut s = TcpStream::connect(&addr).unwrap();
+    for _ in 0..N {
+        f(&mut s);
+    }
+
+    t.join().unwrap();
+}

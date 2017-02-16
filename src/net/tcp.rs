@@ -292,6 +292,7 @@ impl Evented for TcpStream {
     }
 
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
+        try!(self.selector_id.dissociate_selector(poll));
         self.sys.deregister(poll)
     }
 }

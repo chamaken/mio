@@ -30,6 +30,16 @@ impl SelectorId {
             Ok(())
         }
     }
+
+    fn dissociate_selector(&self, poll: &Poll) -> io::Result<()> {
+        let selector_id = self.id.load(Ordering::SeqCst);
+        if selector_id == 0 || selector_id != poll::selector(poll).id() {
+            Err(io::Error::new(io::ErrorKind::Other, "not a associate"))
+        } else {
+            self.id.store(0, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 }
 
 impl Clone for SelectorId {
